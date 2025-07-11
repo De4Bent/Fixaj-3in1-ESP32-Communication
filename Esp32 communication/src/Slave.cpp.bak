@@ -1,0 +1,49 @@
+#include "LoRa_E22.h"
+#include <HardwareSerial.h>
+
+#define M0 32
+#define M1 33
+#define RX 27
+#define TX 35
+#define LED1 12 // LED1 pin
+#define LED2 13 // LED2 pin
+
+HardwareSerial fixajSerial(1);
+LoRa_E22 e22(TX, RX, &fixajSerial, UART_BPS_RATE_9600);
+
+void setup() {
+  pinMode(M0, OUTPUT);
+  pinMode(M1, OUTPUT);
+  digitalWrite(M0, LOW); 
+  digitalWrite(M1, LOW);
+
+  pinMode(LED1, OUTPUT);
+  pinMode(LED2, OUTPUT);
+  digitalWrite(LED1, LOW);
+  digitalWrite(LED2, LOW);
+
+  Serial.begin(9600);
+  delay(500);
+  e22.begin();
+  delay(500);
+
+  Serial.println("Slave's ready");
+}
+
+void loop() {
+  if (e22.available() > 1) {
+    ResponseStructContainer rsc = e22.receiveMessage(32);
+    if (rsc.status.code == SUCCESS) {
+      char* incomingMsg = (char*)rsc.data;
+      Serial.print("Received:");
+      Serial.println(incomingMsg);
+
+      if (strcmp(incomingMsg, "STOP") == 0) {
+        digitalWrite(LED1, HIGH);
+        digitalWrite(LED2, HIGH);
+        Serial.println("Emergency stop's activated");
+      }
+    }
+    rsc.close();
+  }
+}
