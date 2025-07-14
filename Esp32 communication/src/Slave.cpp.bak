@@ -1,49 +1,78 @@
 #include "LoRa_E22.h"
-#include <HardwareSerial.h>
 
-#define M0 32
-#define M1 33
-#define RX 27
-#define TX 35
-#define LED1 12 // LED1 pin
-#define LED2 13 // LED2 pin
+#define M0_PIN 32
+#define M1_PIN 33
 
-HardwareSerial fixajSerial(1);
-LoRa_E22 e22(TX, RX, &fixajSerial, UART_BPS_RATE_9600);
+#define LORA_RX_PIN 16
+#define LORA_TX_PIN 17
+
+#define LED1_PIN 12
+#define LED2_PIN 13
+
+HardwareSerial LoRaSerial(1);
+
+LoRa_E22 e22(LORA_TX_PIN, LORA_RX_PIN, &LoRaSerial, UART_BPS_RATE_9600);
+
+unsigned long ledActivatedTime = 0;
+bool ledsOn = false;
+const unsigned long ledTimeout = 5000;
+bool togglePending = false;
+unsigned long toggleStartTime = 0;
+
 
 void setup() {
-  pinMode(M0, OUTPUT);
-  pinMode(M1, OUTPUT);
-  digitalWrite(M0, LOW); 
-  digitalWrite(M1, LOW);
+  pinMode(M0_PIN, OUTPUT);
+  pinMode(M1_PIN, OUTPUT);
+  digitalWrite(M0_PIN, LOW);
+  digitalWrite(M1_PIN, LOW);
 
-  pinMode(LED1, OUTPUT);
-  pinMode(LED2, OUTPUT);
-  digitalWrite(LED1, LOW);
-  digitalWrite(LED2, LOW);
+  pinMode(LED1_PIN, OUTPUT);
+  pinMode(LED2_PIN, OUTPUT);
+  digitalWrite(LED1_PIN, LOW);
+  digitalWrite(LED2_PIN, LOW);
 
-  Serial.begin(9600);
-  delay(500);
-  e22.begin();
+  Serial.begin(115200);
   delay(500);
 
-  Serial.println("Slave's ready");
+  LoRaSerial.begin(9600, SERIAL_8N1, LORA_RX_PIN, LORA_TX_PIN);
+
+  bool rs = e22.begin();
+  /*
+  if (!rs) {
+    Serial.println("Cлейв: Не удалось инициализировать E22! !");
+  } else {
+    Serial.println("Модуль LoRa инициализировано успешно");
+  }
+*/
 }
-
 void loop() {
   if (e22.available() > 1) {
     ResponseStructContainer rsc = e22.receiveMessage(32);
     if (rsc.status.code == SUCCESS) {
-      char* incomingMsg = (char*)rsc.data;
-      Serial.print("Received:");
-      Serial.println(incomingMsg);
+      char* msg = (char*)rsc.data;
+      Serial.print("Слейв: получено: ");
+      Serial.println(msg);
 
-      if (strcmp(incomingMsg, "STOP") == 0) {
-        digitalWrite(LED1, HIGH);
-        digitalWrite(LED2, HIGH);
-        Serial.println("Emergency stop's activated");
+      if (strcmp(msg, "STOP") == 0 && !togglePending) {
+        togglePending = true;
+        toggleStartTime = millis();
+        Serial.println("Слейв: ожидание перед переключением (5 секунд)");
+
+        const char ack[] = "ACK:STOP";
+        e22.sendFixedMessage(0, 0, 18, (void*)ack, strlen(ack));
       }
     }
     rsc.close();
+  }
+
+  if (togglePending && millis() - toggleStartTime >= 5000) {
+    ledsOn = !ledsOn;
+    digitalWrite(LED1_PIN, ledsOn ? HIGH : LOW);
+    digitalWrite(LED2_PIN, ledsOn ? HIGH : LOW);
+
+    Serial.print("Слейв: светодиоды ");
+    Serial.println(ledsOn ? "Включены" : "Выключены");
+
+    togglePending = false; 
   }
 }
