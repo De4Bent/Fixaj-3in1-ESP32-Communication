@@ -1,42 +1,105 @@
 #include "LoRa_E22.h"
-#include <HardwareSerial.h>
+#define M0_PIN 32
+#define M1_PIN 33
+#define LORA_RX_PIN 16 // UART1 RX
+#define LORA_TX_PIN 17 // UART1 TX
+#define BUTTON_PIN 14 // Emergency Stop button
 
-#define M0 32
-#define M1 33
-#define RX 27
-#define TX 35
-#define BUTTON_PIN 14  // Emergency stop button pin
+HardwareSerial LoRaSerial(1);  // UART1
 
-HardwareSerial fixajSerial(1);
-LoRa_E22 e22(TX, RX, &fixajSerial, UART_BPS_RATE_9600);
+LoRa_E22 e22(LORA_TX_PIN, LORA_RX_PIN, &LoRaSerial, UART_BPS_RATE_9600);
+
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 50;
+bool lastButtonState = HIGH;
+
+bool waitingAck = false;
+unsigned long lastSendTime = 0;
+long ackTimeout = 2000; //millis
+int count = 0;//retry count
+int maxRetries = 3; // amount of tries for recieveng the signal
+
+char* command = "STOP"; //Transfer Data
+
+void sendCommand() {
+  ResponseStatus status = e22.sendFixedMessage(0, 1, 18, (void*)command, strlen(command));
+
+  lastSendTime = millis();
+  waitingAck = true;
+  count++;
+
+  Serial.print("Мастер: отправлено сообщение:  ");
+  Serial.print(command);
+  Serial.print(" (попытка ");
+  Serial.print(count);
+  Serial.println(")");
+
+  if (status.code != SUCCESS) {
+    Serial.println("Мастер: Ошибка при отправке!");
+  }
+}
+
+
 
 void setup() {
-  pinMode(M0, OUTPUT);
-  pinMode(M1, OUTPUT);
-  digitalWrite(M0, LOW);
-  digitalWrite(M1, LOW);
+  pinMode(M0_PIN, OUTPUT);
+  pinMode(M1_PIN, OUTPUT);
+  digitalWrite(M0_PIN, LOW);
+  digitalWrite(M1_PIN, LOW);  // normal mode 
 
-  pinMode(BUTTON_PIN, INPUT_PULLUP); // button should be connected to ground when pressed 
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-  Serial.begin(9600);
-  delay(500);
-  e22.begin();
+  Serial.begin(115200);
   delay(500);
 
-  Serial.println("Master's ready.");
+  LoRaSerial.begin(9600, SERIAL_8N1, LORA_RX_PIN, LORA_TX_PIN);
+
+  bool xD = e22.begin();
+/*  if (!xD) {
+    Serial.println("Мастер: Не удалось инициализировать E22!");
+  } else {
+    Serial.println("Maстер: Модуль LoRa инициализировано успешно");
+  } */
 }
 
 void loop() {
-  static bool lastButtonState = HIGH;
-  bool buttonState = digitalRead(BUTTON_PIN);
+  bool reading = digitalRead(BUTTON_PIN);
 
-  if (buttonState == LOW && lastButtonState == HIGH) {
-    const char msg[] = "STOP";
-    ResponseStatus rs = e22.sendFixedMessage(0, 1, 18, (void*)msg, sizeof(msg));
-    Serial.print("Sent STOP message, status: ");
-    Serial.println(rs.getResponseDescription());
-    delay(500);
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
   }
 
-  lastButtonState = buttonState;
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading == LOW && lastButtonState == HIGH && !waitingAck) {
+      count = 0;
+      sendCommand();
+    }
+  }
+  lastButtonState = reading;
+
+  if (waitingAck && e22.available() > 1) {
+    ResponseStructContainer rsc = e22.receiveMessage(32);
+    if (rsc.status.code == SUCCESS) {
+      char* resp = (char*)rsc.data;
+      Serial.print(" Получено сообщение: ");
+      Serial.println(resp);
+
+      if (strncmp(resp, "ACK:", 4) == 0) {
+        waitingAck = false;
+        Serial.println("Мастер: ACK получено.");
+        count = 0;
+      }
+    }
+    rsc.close();
+  }
+
+  if (waitingAck && (millis() - lastSendTime > ackTimeout)) {
+    if (count < maxRetries) {
+      Serial.println("Мастер: время для получаения АСК истекло, повторная отправка....");
+    } else {
+      Serial.println("Мастер: достигнуто максимальное колличество отправок. АСК не получено");
+      waitingAck = false;
+      count = 0;
+    }
+  }
 }
