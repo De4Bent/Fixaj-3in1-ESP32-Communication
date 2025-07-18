@@ -17,7 +17,7 @@ void setup() {
   digitalWrite(M1_PIN, LOW);
 
   pinMode(LED1_PIN, OUTPUT);
-  digitalWrite(LED1_PIN, HIGH);
+  digitalWrite(LED1_PIN, HIGH); // for NC types of relays switch to LOW and change some of the output messages 
 
   Serial.begin(115200); // might wanna change to 9600
   LoRaSerial.begin(9600, SERIAL_8N1, LORA_RX_PIN, LORA_TX_PIN);
