@@ -19,7 +19,7 @@ void setup() {
   digitalWrite(M1_PIN, LOW);
 
   pinMode(LED1_PIN, OUTPUT);
-  digitalWrite(LED1_PIN, LOW);
+  digitalWrite(LED1_PIN, HIGH); // If you are using NC type of relay switch it to LOW
 
   Serial.begin(115200);
   LoRaSerial.begin(9600, SERIAL_8N1, LORA_RX_PIN, LORA_TX_PIN);
@@ -36,8 +36,8 @@ void loop() {
 
       if (strcmp(msg, "STOP") == 0) {
         leds_on = !leds_on;
-        digitalWrite(LED1_PIN, leds_on ? HIGH : LOW);
-        Serial.println(leds_on ? "Slave: Relay ON" : "Slave: LEDs OFF");
+        digitalWrite(LED1_PIN, leds_on ? LOW : HIGH);
+        Serial.println(leds_on ? "Slave: Relay OFF" : "Slave: LEDs ON");
 
         const char ack[] = "ACK:STOP";
         e22.sendFixedMessage(0, 0, 18, (void*)ack, strlen(ack));
